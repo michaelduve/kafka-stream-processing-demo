@@ -1,0 +1,37 @@
+services:
+  redpanda-0:
+    image: redpandadata/redpanda:v24.2.18
+    command: [redpanda, start, --smp, '1', --memory, 768M, --reserve-memory, 0M, --overprovisioned, --node-id, '0', --kafka-addr, 'internal://0.0.0.0:9092,external://0.0.0.0:19092', --advertise-kafka-addr, 'internal://redpanda-0:9092,external://localhost:19092']
+    ports: ['19092:19092', '9644:9644']
+    healthcheck: {test: ['CMD-SHELL', 'rpk cluster health | grep -q Healthy'], interval: 10s, timeout: 5s, retries: 12}
+  redpanda-1:
+    image: redpandadata/redpanda:v24.2.18
+    command: [redpanda, start, --smp, '1', --memory, 768M, --reserve-memory, 0M, --overprovisioned, --node-id, '1', --seeds, 'redpanda-0:33145', --kafka-addr, 'internal://0.0.0.0:9092,external://0.0.0.0:29092', --advertise-kafka-addr, 'internal://redpanda-1:9092,external://localhost:29092']
+    ports: ['29092:29092', '9645:9644']
+    depends_on: {redpanda-0: {condition: service_healthy}}
+  redpanda-2:
+    image: redpandadata/redpanda:v24.2.18
+    command: [redpanda, start, --smp, '1', --memory, 768M, --reserve-memory, 0M, --overprovisioned, --node-id, '2', --seeds, 'redpanda-0:33145', --kafka-addr, 'internal://0.0.0.0:9092,external://0.0.0.0:39092', --advertise-kafka-addr, 'internal://redpanda-2:9092,external://localhost:39092']
+    ports: ['39092:39092', '9646:9644']
+    depends_on: {redpanda-0: {condition: service_healthy}}
+  console:
+    image: redpandadata/console:v2.7.2
+    environment: {KAFKA_BROKERS: 'redpanda-0:9092,redpanda-1:9092,redpanda-2:9092'}
+    ports: ['8080:8080']
+    depends_on: {redpanda-0: {condition: service_healthy}}
+  postgres:
+    image: postgres:16-alpine
+    environment: {POSTGRES_DB: streaming, POSTGRES_USER: streaming, POSTGRES_PASSWORD: streaming}
+    ports: ['5432:5432']
+    volumes: ['./sql:/docker-entrypoint-initdb.d:ro']
+    healthcheck: {test: ['CMD-SHELL', 'pg_isready -U streaming'], interval: 5s, timeout: 3s, retries: 10}
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    volumes: ['./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro']
+    ports: ['9090:9090']
+  grafana:
+    image: grafana/grafana:11.3.1
+    environment: {GF_SECURITY_ADMIN_USER: admin, GF_SECURITY_ADMIN_PASSWORD: admin}
+    ports: ['3000:3000']
+    volumes: ['./config/grafana-datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml:ro']
+
